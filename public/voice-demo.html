@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Voice Recognition Demo - SonoFlow</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    
+    .container {
+      background: white;
+      border-radius: 20px;
+      padding: 40px;
+      max-width: 700px;
+      width: 100%;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+    
+    h1 {
+      color: #333;
+      margin-bottom: 10px;
+      font-size: 28px;
+    }
+    
+    .subtitle {
+      color: #666;
+      margin-bottom: 30px;
+      font-size: 14px;
+    }
+    
+    .controls {
+      display: flex;
+      gap: 15px;
+      margin-bottom: 30px;
+      flex-wrap: wrap;
+    }
+    
+    button {
+      flex: 1;
+      min-width: 150px;
+      padding: 15px 30px;
+      border: none;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+    
+    #startBtn {
+      background: #10b981;
+      color: white;
+    }
+    
+    #startBtn:hover:not(:disabled) {
+      background: #059669;
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px rgba(16, 185, 129, 0.3);
+    }
+    
+    #stopBtn {
+      background: #ef4444;
+      color: white;
+    }
+    
+    #stopBtn:hover:not(:disabled) {
+      background: #dc2626;
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px rgba(239, 68, 68, 0.3);
+    }
+    
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    .status {
+      padding: 15px;
+      border-radius: 10px;
+      margin-bottom: 20px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    .status.idle {
+      background: #f3f4f6;
+      color: #6b7280;
+    }
+    
+    .status.listening {
+      background: #dbeafe;
+      color: #1e40af;
+      animation: pulse 2s infinite;
+    }
+    
+    .status.error {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+    
+    .transcript-box {
+      background: #f9fafb;
+      border: 2px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 20px;
+      min-height: 200px;
+      max-height: 400px;
+      overflow-y: auto;
+      margin-bottom: 20px;
+    }
+    
+    .transcript-item {
+      margin-bottom: 15px;
+      padding: 10px;
+      background: white;
+      border-radius: 8px;
+      border-left: 4px solid #667eea;
+    }
+    
+    .transcript-item.interim {
+      opacity: 0.6;
+      border-left-color: #cbd5e1;
+    }
+    
+    .transcript-item.final {
+      border-left-color: #10b981;
+    }
+    
+    .confidence {
+      font-size: 12px;
+      color: #6b7280;
+      margin-top: 5px;
+    }
+    
+    .mic-icon {
+      width: 20px;
+      height: 20px;
+      fill: currentColor;
+    }
+    
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 15px;
+      margin-top: 20px;
+    }
+    
+    .stat-card {
+      background: #f9fafb;
+      padding: 15px;
+      border-radius: 10px;
+      text-align: center;
+    }
+    
+    .stat-value {
+      font-size: 24px;
+      font-weight: 700;
+      color: #667eea;
+    }
+    
+    .stat-label {
+      font-size: 12px;
+      color: #6b7280;
+      margin-top: 5px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎤 Voice Recognition Demo</h1>
+    <p class="subtitle">Real-time medical dictation with Google Cloud Speech-to-Text</p>
+    
+    <div class="controls">
+      <select id="languageSelect" style="flex: 1; padding: 15px; border: 2px solid #e5e7eb; border-radius: 10px; font-size: 16px; cursor: pointer; background: white;">
+        <option value="ru-RU">🇷🇺 Русский (Russian)</option>
+        <option value="hy-AM">🇦🇲 Հայերեն (Armenian)</option>
+        <option value="en-US">🇺🇸 English (US)</option>
+        <option value="en-GB">🇬🇧 English (UK)</option>
+        <option value="es-ES">🇪🇸 Español (Spanish)</option>
+        <option value="fr-FR">🇫🇷 Français (French)</option>
+        <option value="de-DE">🇩🇪 Deutsch (German)</option>
+        <option value="it-IT">🇮🇹 Italiano (Italian)</option>
+        <option value="pt-BR">🇧🇷 Português (Portuguese)</option>
+        <option value="zh-CN">🇨🇳 中文 (Chinese)</option>
+        <option value="ja-JP">🇯🇵 日本語 (Japanese)</option>
+        <option value="ko-KR">🇰🇷 한국어 (Korean)</option>
+        <option value="ar-SA">🇸🇦 العربية (Arabic)</option>
+      </select>
+    </div>
+    
+    <div class="controls">
+      <button id="startBtn">
+        <svg class="mic-icon" viewBox="0 0 24 24">
+          <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+          <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+        </svg>
+        Start Recording
+      </button>
+      <button id="stopBtn" disabled>
+        <svg class="mic-icon" viewBox="0 0 24 24">
+          <rect x="6" y="6" width="12" height="12" rx="2"/>
+        </svg>
+        Stop Recording
+      </button>
+    </div>
+    
+    <div id="status" class="status idle">
+      ⚪ Ready to start
+    </div>
+    
+    <div class="transcript-box" id="transcriptBox">
+      <p style="color: #9ca3af; text-align: center; margin-top: 60px;">
+        Click "Start Recording" to begin transcription...
+      </p>
+    </div>
+    
+    <div class="stats">
+      <div class="stat-card">
+        <div class="stat-value" id="wordCount">0</div>
+        <div class="stat-label">Words</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="avgConfidence">0%</div>
+        <div class="stat-label">Avg Confidence</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="duration">0s</div>
+        <div class="stat-label">Duration</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const socket = io('http://localhost:5000');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const statusDiv = document.getElementById('status');
+    const transcriptBox = document.getElementById('transcriptBox');
+    const languageSelect = document.getElementById('languageSelect');
+    
+    let mediaRecorder;
+    let audioContext;
+    let startTime;
+    let transcripts = [];
+    let confidenceScores = [];
+    
+    startBtn.addEventListener('click', startRecording);
+    stopBtn.addEventListener('click', stopRecording);
+    
+    async function startRecording() {
+      try {
+        // Request high-quality audio
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            sampleRate: 48000
+          }
+        });
+        
+        audioContext = new AudioContext({ sampleRate: 16000 });
+        const source = audioContext.createMediaStreamSource(stream);
+        const processor = audioContext.createScriptProcessor(2048, 1, 1);
+        
+        source.connect(processor);
+        processor.connect(audioContext.destination);
+        
+        // Emit start streaming event with sample rate and selected language
+        socket.emit('start-streaming', { 
+          language: languageSelect.value,
+          sampleRate: audioContext.sampleRate
+        });
+        
+        let chunkCount = 0;
+        processor.onaudioprocess = (e) => {
+          const audioData = e.inputBuffer.getChannelData(0);
+          const int16Data = convertFloat32ToInt16(audioData);
+          socket.emit('audio-chunk', int16Data);
+          
+          // Log every 50 chunks
+          if (chunkCount++ % 50 === 0) {
+            console.log(`Sent ${chunkCount} audio chunks, buffer size: ${int16Data.byteLength} bytes`);
+          }
+        };
+        
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+        languageSelect.disabled = true;
+        updateStatus('listening', '🎙️ Listening...');
+        
+        startTime = Date.now();
+        updateDuration();
+        
+        mediaRecorder = { stream, processor, source };
+      } catch (error) {
+        console.error('Error accessing microphone:', error);
+        updateStatus('error', '❌ Microphone access denied');
+      }
+    }
+    
+    function stopRecording() {
+      if (mediaRecorder) {
+        socket.emit('stop-streaming');
+        
+        mediaRecorder.processor.disconnect();
+        mediaRecorder.source.disconnect();
+        mediaRecorder.stream.getTracks().forEach(track => track.stop());
+        
+        if (audioContext) {
+          audioContext.close();
+        }
+        
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+        languageSelect.disabled = false;
+        updateStatus('idle', '⚪ Recording stopped');
+      }
+    }
+    
+    function convertFloat32ToInt16(buffer) {
+      const int16 = new Int16Array(buffer.length);
+      for (let i = 0; i < buffer.length; i++) {
+        const s = Math.max(-1, Math.min(1, buffer[i]));
+        int16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+      }
+      return int16.buffer;
+    }
+    
+    function updateStatus(type, message) {
+      statusDiv.className = `status ${type}`;
+      statusDiv.textContent = message;
+    }
+    
+    function updateDuration() {
+      if (startTime && !stopBtn.disabled) {
+        const seconds = Math.floor((Date.now() - startTime) / 1000);
+        document.getElementById('duration').textContent = seconds + 's';
+        setTimeout(updateDuration, 1000);
+      }
+    }
+    
+    function updateStats() {
+      const wordCount = transcripts.join(' ').split(' ').filter(w => w.length > 0).length;
+      document.getElementById('wordCount').textContent = wordCount;
+      
+      if (confidenceScores.length > 0) {
+        const avg = confidenceScores.reduce((a, b) => a + b, 0) / confidenceScores.length;
+        document.getElementById('avgConfidence').textContent = Math.round(avg * 100) + '%';
+      }
+    }
+    
+    // Socket event handlers
+    socket.on('streaming-started', (data) => {
+      console.log('Streaming started:', data);
+      transcriptBox.innerHTML = '';
+    });
+    
+    socket.on('streaming-transcript', (data) => {
+      const { transcript, isFinal, confidence } = data;
+      
+      if (isFinal) {
+        transcripts.push(transcript);
+        if (confidence) {
+          confidenceScores.push(confidence);
+        }
+      }
+      
+      displayTranscript(transcript, isFinal, confidence);
+      updateStats();
+    });
+    
+    socket.on('streaming-error', (data) => {
+      console.error('Streaming error:', data);
+      updateStatus('error', `❌ Error: ${data.error}`);
+      stopRecording();
+    });
+    
+    socket.on('streaming-stopped', (data) => {
+      console.log('Streaming stopped:', data);
+    });
+    
+    function displayTranscript(text, isFinal, confidence) {
+      const existing = transcriptBox.querySelector('.transcript-item.interim');
+      
+      if (isFinal) {
+        if (existing) {
+          existing.remove();
+        }
+        
+        const div = document.createElement('div');
+        div.className = 'transcript-item final';
+        div.innerHTML = `
+          <div>${text}</div>
+          ${confidence ? `<div class="confidence">Confidence: ${Math.round(confidence * 100)}%</div>` : ''}
+        `;
+        transcriptBox.appendChild(div);
+      } else {
+        if (existing) {
+          existing.querySelector('div').textContent = text;
+        } else {
+          const div = document.createElement('div');
+          div.className = 'transcript-item interim';
+          div.innerHTML = `<div>${text}</div>`;
+          transcriptBox.appendChild(div);
+        }
+      }
+      
+      transcriptBox.scrollTop = transcriptBox.scrollHeight;
+    }
+  </script>
+</body>
+</html>
