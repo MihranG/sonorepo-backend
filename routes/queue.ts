@@ -1,9 +1,9 @@
-const express = require('express');
-const router = express.Router();
-const pool = require('../config/database');
+import express, { Request, Response, Router } from 'express';
+const router: Router = express.Router();
+import pool from '../config/database';
 
 // Get today's queue
-router.get('/', async (req, res) => {
+router.get('/', async (req: Request, res: Response) => {
   console.log('----')
   try {
     const result = await pool.query(`
@@ -27,7 +27,7 @@ router.get('/', async (req, res) => {
 });
 
 // Add patient to queue
-router.post('/', async (req, res) => {
+router.post('/', async (req: Request, res: Response) => {
   const { patient_id, appointment_type, procedure_type, estimated_duration, notes, priority } = req.body;
   
   try {
@@ -70,7 +70,7 @@ router.post('/', async (req, res) => {
 });
 
 // Update queue item status
-router.patch('/:id/status', async (req, res) => {
+router.patch('/:id/status', async (req: Request, res: Response) => {
   const { id } = req.params;
   const { status } = req.body;
   
@@ -101,7 +101,7 @@ router.patch('/:id/status', async (req, res) => {
 });
 
 // Reorder queue (drag and drop)
-router.put('/reorder', async (req, res) => {
+router.put('/reorder', async (req: Request, res: Response) => {
   const { items } = req.body; // Array of {id, queue_position}
   
   try {
@@ -131,7 +131,7 @@ router.put('/reorder', async (req, res) => {
 });
 
 // Delete queue item
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
   
   try {
@@ -148,4 +148,4 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;

@@ -1,5 +1,5 @@
-const express = require('express');
-const router = express.Router();
+import express, { Request, Response, Router } from 'express';
+const router: Router = express.Router();
 const multer = require('multer');
 const FormData = require('form-data');
 const fs = require('fs');
@@ -9,7 +9,7 @@ const speech = require('@google-cloud/speech');
 const upload = multer({ dest: 'uploads/' });
 
 // Transcribe audio using OpenAI Whisper API
-router.post('/transcribe', upload.single('audio'), async (req, res) => {
+router.post('/transcribe', upload.single('audio'), async (req: any, res: Response) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No audio file provided' });
@@ -51,7 +51,7 @@ router.post('/transcribe', upload.single('audio'), async (req, res) => {
       return res.status(response.status).json({ error: 'Transcription failed', details: error });
     }
 
-    const data = await response.json();
+    const data: any = await response.json();
     res.json({ transcript: data.text });
 
   } catch (error) {
@@ -67,7 +67,7 @@ router.post('/transcribe', upload.single('audio'), async (req, res) => {
 });
 
 // Smart field extraction from voice transcript
-router.post('/extract-fields', async (req, res) => {
+router.post('/extract-fields', async (req: Request, res: Response) => {
   const { transcript, procedure_type } = req.body;
   
   if (!transcript) {
@@ -77,7 +77,7 @@ router.post('/extract-fields', async (req, res) => {
   try {
     // Basic field extraction using pattern matching
     // In production, you could use GPT-4 for more intelligent extraction
-    const fields = {};
+    const fields: any = {};
     
     // Extract common measurements
     const efMatch = transcript.match(/(?:ejection fraction|EF)[\s:]*(\d+)%?/i);
@@ -96,7 +96,7 @@ router.post('/extract-fields', async (req, res) => {
       noEvidence: /no evidence of|absence of|negative for/i
     };
     
-    const findings = {};
+    const findings: any = {};
     for (const [key, pattern] of Object.entries(keywords)) {
       if (pattern.test(transcript)) {
         findings[key] = true;
@@ -135,4 +135,4 @@ router.get('/modes', (req, res) => {
   res.json(modes);
 });
 
-module.exports = router;
+export default router;

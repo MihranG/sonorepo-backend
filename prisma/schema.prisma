@@ -1,0 +1,81 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Patient {
+  id             Int       @id @default(autoincrement())
+  firstName      String    @map("first_name") @db.VarChar(100)
+  lastName       String    @map("last_name") @db.VarChar(100)
+  dateOfBirth    DateTime? @map("date_of_birth") @db.Date
+  gender         String?   @db.VarChar(20)
+  phone          String?   @db.VarChar(20)
+  email          String?   @db.VarChar(100)
+  insuranceInfo  String?   @map("insurance_info")
+  medicalHistory String?   @map("medical_history")
+  createdAt      DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt      DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  queue          Queue[]
+  reports        Report[]
+
+  @@map("patients")
+}
+
+model Queue {
+  id                Int       @id @default(autoincrement())
+  patientId         Int?      @map("patient_id")
+  appointmentType   String?   @map("appointment_type") @db.VarChar(50)
+  procedureType     String?   @map("procedure_type") @db.VarChar(100)
+  status            String?   @default("waiting") @db.VarChar(20)
+  priority          Int?      @default(0)
+  queuePosition     Int?      @map("queue_position")
+  estimatedDuration Int?      @map("estimated_duration")
+  notes             String?
+  checkedInAt       DateTime? @default(now()) @map("checked_in_at") @db.Timestamp(6)
+  startedAt         DateTime? @map("started_at") @db.Timestamp(6)
+  completedAt       DateTime? @map("completed_at") @db.Timestamp(6)
+  createdAt         DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt         DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  patient           Patient?  @relation(fields: [patientId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  reports           Report[]
+
+  @@map("queue")
+}
+
+model Report {
+  id              Int       @id @default(autoincrement())
+  patientId       Int?      @map("patient_id")
+  queueId         Int?      @map("queue_id")
+  procedureType   String    @map("procedure_type") @db.VarChar(100)
+  doctorName      String?   @map("doctor_name") @db.VarChar(100)
+  findings        String?
+  impression      String?
+  recommendations String?
+  voiceTranscript String?   @map("voice_transcript")
+  measurements    Json?
+  images          Json?
+  status          String?   @default("draft") @db.VarChar(20)
+  reportDate      DateTime? @default(dbgenerated("CURRENT_DATE")) @map("report_date") @db.Date
+  createdAt       DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt       DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  patient         Patient?  @relation(fields: [patientId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  queue           Queue?    @relation(fields: [queueId], references: [id], onUpdate: NoAction)
+
+  @@map("reports")
+}
+
+model ReportTemplate {
+  id             Int       @id @default(autoincrement())
+  name           String    @db.VarChar(100)
+  procedureType  String    @map("procedure_type") @db.VarChar(100)
+  templateFields Json      @map("template_fields")
+  defaultContent String?   @map("default_content")
+  createdAt      DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt      DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  @@map("report_templates")
+}

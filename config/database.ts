@@ -1,12 +1,15 @@
-const { Pool } = require('pg');
+import 'dotenv/config';
+import { Pool, PoolConfig } from 'pg';
 
-const pool = new Pool({
+const config: PoolConfig = {
   host: process.env.DB_HOST,
-  port: process.env.DB_PORT,
+  port: Number(process.env.DB_PORT),
   database: process.env.DB_NAME,
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
-});
+};
+
+const pool = new Pool(config);
 
 pool.on('connect', () => {
   console.log('✅ Connected to PostgreSQL database');
@@ -27,4 +30,4 @@ pool.query('SELECT NOW()')
     console.error('   Please check your database configuration in .env');
   });
 
-module.exports = pool;
+export default pool;

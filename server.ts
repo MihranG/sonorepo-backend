@@ -1,13 +1,17 @@
-require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
-const bodyParser = require('body-parser');
-const http = require('http');
-const { Server } = require('socket.io');
+import 'dotenv/config';
+import express, { Express, Request, Response, NextFunction } from 'express';
+import cors from 'cors';
+import http from 'http';
+import { Server as SocketIOServer, Socket } from 'socket.io';
+import patientsRouter from './routes/patients';
+import queueRouter from './routes/queue';
+import reportsRouter from './routes/reports';
+import voiceRouter from './routes/voice';
+import { VoiceConfig, StreamingTranscript } from './types';
 
-const app = express();
+const app: Express = express();
 const server = http.createServer(app);
-const io = new Server(server, {
+const io = new SocketIOServer(server, {
   cors: {
     origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
@@ -18,17 +22,11 @@ const io = new Server(server, {
 app.use(cors({
   origin: process.env.CORS_ORIGIN || 'http://localhost:3000'
 }));
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // Serve static files (demo pages)
 app.use(express.static('public'));
-
-// Import routes
-const patientsRouter = require('./routes/patients');
-const queueRouter = require('./routes/queue');
-const reportsRouter = require('./routes/reports');
-const voiceRouter = require('./routes/voice');
 
 // API Routes
 app.use('/api/patients', patientsRouter);
@@ -42,23 +40,23 @@ app.get('/api/health', (req, res) => {
 });
 
 // Socket.IO for real-time updates
-io.on('connection', (socket) => {
+io.on('connection', (socket: Socket) => {
   console.log('Client connected:', socket.id);
   
-  socket.on('queue-update', (data) => {
+  socket.on('queue-update', (data: any) => {
     // Broadcast queue updates to all connected clients
     socket.broadcast.emit('queue-updated', data);
   });
   
-  socket.on('report-update', (data) => {
+  socket.on('report-update', (data: any) => {
     // Broadcast report updates to all connected clients
     socket.broadcast.emit('report-updated', data);
   });
   
   // Real-time voice streaming with Google Speech-to-Text
-  let recognizeStream = null;
+  let recognizeStream: any = null;
   
-  socket.on('start-streaming', async (config) => {
+  socket.on('start-streaming', async (config: VoiceConfig) => {
     try {
       // Check if Google credentials are configured
       if (!process.env.GOOGLE_APPLICATION_CREDENTIALS && !process.env.GOOGLE_CLOUD_API_KEY) {
@@ -75,7 +73,7 @@ io.on('connection', (socket) => {
       const languageCode = config.language || 'en-US';
       const useMedicalModel = languageCode.startsWith('en-');
       
-      const recognitionConfig = {
+      const recognitionConfig: any = {
         encoding: 'LINEAR16',
         sampleRateHertz: config.sampleRate || 16000,
         languageCode: languageCode,
@@ -98,11 +96,11 @@ io.on('connection', (socket) => {
 
       recognizeStream = client
         .streamingRecognize(request)
-        .on('error', (error) => {
+        .on('error', (error: any) => {
           console.error('Streaming error:', error);
           socket.emit('streaming-error', { error: error.message });
         })
-        .on('data', (data) => {
+        .on('data', (data: any) => {
           const result = data.results[0];
           if (result && result.alternatives[0]) {
             const transcript = result.alternatives[0].transcript;
@@ -118,17 +116,17 @@ io.on('connection', (socket) => {
 
       socket.emit('streaming-started', { message: 'Streaming started successfully' });
       console.log('Voice streaming started for socket:', socket.id);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error starting stream:', error);
-      socket.emit('streaming-error', { error: error.message });
+      socket.emit('streaming-error', { error: error?.message || 'Unknown error' });
     }
   });
 
-  socket.on('audio-chunk', (audioData) => {
+  socket.on('audio-chunk', (chunk: Buffer) => {
     if (recognizeStream) {
       try {
-        recognizeStream.write(audioData);
-      } catch (error) {
+        recognizeStream.write(chunk);
+      } catch (error: any) {
         console.error('Error writing audio chunk:', error);
       }
     }
@@ -156,7 +154,7 @@ io.on('connection', (socket) => {
 app.set('io', io);
 
 // Error handling middleware
-app.use((err, req, res, next) => {
+app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
   console.error('Server error:', err);
   res.status(500).json({ 
     error: 'Internal server error',
@@ -165,7 +163,7 @@ app.use((err, req, res, next) => {
 });
 
 // 404 handler
-app.use((req, res) => {
+app.use((req: Request, res: Response) => {
   res.status(404).json({ error: 'Route not found' });
 });
 

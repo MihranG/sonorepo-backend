@@ -1,6 +1,6 @@
-const express = require('express');
-const router = express.Router();
-const pool = require('../config/database');
+import express, { Request, Response, Router } from 'express';
+const router: Router = express.Router();
+import pool from '../config/database';
 const PDFDocument = require('pdfkit');
 
 // Get all report templates
@@ -310,4 +310,4 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;
