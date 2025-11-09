@@ -1,4 +1,5 @@
 import express, { Request, Response, Router } from 'express';
+import { medicalEnhancement } from '../services/medicalEnhancement';
 const router: Router = express.Router();
 const multer = require('multer');
 const FormData = require('form-data');
@@ -66,46 +67,29 @@ router.post('/transcribe', upload.single('audio'), async (req: any, res: Respons
   }
 });
 
-// Smart field extraction from voice transcript
+// Smart field extraction from voice transcript with medical enhancement
 router.post('/extract-fields', async (req: Request, res: Response) => {
-  const { transcript, procedure_type } = req.body;
+  const { transcript, procedure_type, language } = req.body;
   
   if (!transcript) {
     return res.status(400).json({ error: 'No transcript provided' });
   }
 
   try {
-    // Basic field extraction using pattern matching
-    // In production, you could use GPT-4 for more intelligent extraction
-    const fields: any = {};
-    
-    // Extract common measurements
-    const efMatch = transcript.match(/(?:ejection fraction|EF)[\s:]*(\d+)%?/i);
-    if (efMatch) fields.ejection_fraction = efMatch[1];
-    
-    const bpdMatch = transcript.match(/BPD[\s:]*(\d+\.?\d*)\s*(?:mm|centimeters|cm)?/i);
-    if (bpdMatch) fields.biparietal_diameter = bpdMatch[1];
-    
-    const gaMatch = transcript.match(/(?:gestational age|GA)[\s:]*(\d+)\s*weeks?/i);
-    if (gaMatch) fields.gestational_age = gaMatch[1];
-    
-    // Extract keywords for findings
-    const keywords = {
-      normal: /normal|unremarkable|within normal limits/i,
-      abnormal: /abnormal|concerning|dilated|enlarged|thickened/i,
-      noEvidence: /no evidence of|absence of|negative for/i
-    };
-    
-    const findings: any = {};
-    for (const [key, pattern] of Object.entries(keywords)) {
-      if (pattern.test(transcript)) {
-        findings[key] = true;
-      }
-    }
+    // Use medical enhancement service for intelligent extraction
+    const enhanced = medicalEnhancement.enhanceTranscript({
+      transcript,
+      procedureType: procedure_type || 'echocardiogram',
+      language: language || 'en-US'
+    });
     
     res.json({ 
-      fields,
-      findings,
+      enhanced_transcript: enhanced.enhanced,
+      standardized: enhanced.standardized,
+      measurements: enhanced.measurements,
+      detected_section: enhanced.detectedSection,
+      findings: enhanced.findings,
+      suggestions: enhanced.suggestions,
       raw_transcript: transcript
     });
 
