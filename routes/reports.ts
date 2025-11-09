@@ -1,13 +1,15 @@
 import express, { Request, Response, Router } from 'express';
+import prisma from '../config/prisma';
 const router: Router = express.Router();
-import pool from '../config/database';
 const PDFDocument = require('pdfkit');
 
 // Get all report templates
-router.get('/templates', async (req, res) => {
+router.get('/templates', async (req: Request, res: Response) => {
   try {
-    const result = await pool.query('SELECT * FROM report_templates ORDER BY name');
-    res.json(result.rows);
+    const templates = await prisma.reportTemplate.findMany({
+      orderBy: { name: 'asc' }
+    });
+    res.json(templates);
   } catch (error) {
     console.error('Error fetching templates:', error);
     res.status(500).json({ error: 'Failed to fetch templates' });
@@ -15,20 +17,19 @@ router.get('/templates', async (req, res) => {
 });
 
 // Get template by procedure type
-router.get('/templates/:procedureType', async (req, res) => {
+router.get('/templates/:procedureType', async (req: Request, res: Response) => {
   const { procedureType } = req.params;
   
   try {
-    const result = await pool.query(
-      'SELECT * FROM report_templates WHERE procedure_type = $1',
-      [procedureType]
-    );
+    const template = await prisma.reportTemplate.findFirst({
+      where: { procedureType: procedureType }
+    });
     
-    if (result.rows.length === 0) {
+    if (!template) {
       return res.status(404).json({ error: 'Template not found' });
     }
     
-    res.json(result.rows[0]);
+    res.json(template);
   } catch (error) {
     console.error('Error fetching template:', error);
     res.status(500).json({ error: 'Failed to fetch template' });
@@ -36,36 +37,47 @@ router.get('/templates/:procedureType', async (req, res) => {
 });
 
 // Get all reports
-router.get('/', async (req, res) => {
+router.get('/', async (req: Request, res: Response) => {
   const { patient_id, status } = req.query;
   
   try {
-    let query = `
-      SELECT 
-        r.*,
-        p.first_name,
-        p.last_name,
-        p.date_of_birth
-      FROM reports r
-      JOIN patients p ON r.patient_id = p.id
-      WHERE 1=1
-    `;
-    const params = [];
+    const where: any = {};
     
     if (patient_id) {
-      params.push(patient_id);
-      query += ` AND r.patient_id = $${params.length}`;
+      where.patientId = parseInt(patient_id as string);
     }
     
     if (status) {
-      params.push(status);
-      query += ` AND r.status = $${params.length}`;
+      where.status = status as string;
     }
     
-    query += ' ORDER BY r.report_date DESC, r.created_at DESC';
-    
-    const result = await pool.query(query, params);
-    res.json(result.rows);
+    const reports = await prisma.report.findMany({
+      where,
+      include: {
+        patient: {
+          select: {
+            firstName: true,
+            lastName: true,
+            dateOfBirth: true
+          }
+        }
+      },
+      orderBy: [
+        { reportDate: 'desc' },
+        { createdAt: 'desc' }
+      ]
+    });
+
+    // Flatten patient data
+    const formattedReports = reports.map((r: any) => ({
+      ...r,
+      first_name: r.patient.firstName,
+      last_name: r.patient.lastName,
+      date_of_birth: r.patient.dateOfBirth,
+      patient: undefined
+    }));
+
+    res.json(formattedReports);
   } catch (error) {
     console.error('Error fetching reports:', error);
     res.status(500).json({ error: 'Failed to fetch reports' });
@@ -73,28 +85,41 @@ router.get('/', async (req, res) => {
 });
 
 // Get report by ID
-router.get('/:id', async (req, res) => {
+router.get('/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
   
   try {
-    const result = await pool.query(`
-      SELECT 
-        r.*,
-        p.first_name,
-        p.last_name,
-        p.date_of_birth,
-        p.phone,
-        p.email
-      FROM reports r
-      JOIN patients p ON r.patient_id = p.id
-      WHERE r.id = $1
-    `, [id]);
+    const report = await prisma.report.findUnique({
+      where: { id: parseInt(id) },
+      include: {
+        patient: {
+          select: {
+            firstName: true,
+            lastName: true,
+            dateOfBirth: true,
+            phone: true,
+            email: true
+          }
+        }
+      }
+    });
     
-    if (result.rows.length === 0) {
+    if (!report) {
       return res.status(404).json({ error: 'Report not found' });
     }
+
+    // Flatten patient data
+    const formattedReport = {
+      ...report,
+      first_name: report.patient?.firstName,
+      last_name: report.patient?.lastName,
+      date_of_birth: report.patient?.dateOfBirth,
+      phone: report.patient?.phone,
+      email: report.patient?.email,
+      patient: undefined
+    };
     
-    res.json(result.rows[0]);
+    res.json(formattedReport);
   } catch (error) {
     console.error('Error fetching report:', error);
     res.status(500).json({ error: 'Failed to fetch report' });
@@ -102,7 +127,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // Create new report
-router.post('/', async (req, res) => {
+router.post('/', async (req: Request, res: Response) => {
   const {
     patient_id,
     queue_id,
@@ -123,29 +148,23 @@ router.post('/', async (req, res) => {
   }
   
   try {
-    const result = await pool.query(`
-      INSERT INTO reports (
-        patient_id, queue_id, procedure_type, doctor_name,
-        findings, impression, recommendations, voice_transcript,
-        measurements, images, status
-      )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-      RETURNING *
-    `, [
-      patient_id,
-      queue_id || null,
-      procedure_type,
-      doctor_name,
-      findings,
-      impression,
-      recommendations,
-      voice_transcript,
-      measurements ? JSON.stringify(measurements) : null,
-      images ? JSON.stringify(images) : null,
-      status || 'draft'
-    ]);
+    const report = await prisma.report.create({
+      data: {
+        patientId: parseInt(patient_id),
+        queueId: queue_id ? parseInt(queue_id) : null,
+        procedureType: procedure_type,
+        doctorName: doctor_name,
+        findings,
+        impression,
+        recommendations,
+        voiceTranscript: voice_transcript,
+        measurements: measurements || null,
+        images: images || null,
+        status: status || 'draft'
+      }
+    });
     
-    res.status(201).json(result.rows[0]);
+    res.status(201).json(report);
   } catch (error) {
     console.error('Error creating report:', error);
     res.status(500).json({ error: 'Failed to create report' });
@@ -153,7 +172,7 @@ router.post('/', async (req, res) => {
 });
 
 // Update report
-router.put('/:id', async (req, res) => {
+router.put('/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
   const {
     procedure_type,
@@ -168,32 +187,23 @@ router.put('/:id', async (req, res) => {
   } = req.body;
   
   try {
-    const result = await pool.query(`
-      UPDATE reports 
-      SET procedure_type = $1, doctor_name = $2, findings = $3,
-          impression = $4, recommendations = $5, voice_transcript = $6,
-          measurements = $7, images = $8, status = $9,
-          updated_at = CURRENT_TIMESTAMP
-      WHERE id = $10
-      RETURNING *
-    `, [
-      procedure_type,
-      doctor_name,
-      findings,
-      impression,
-      recommendations,
-      voice_transcript,
-      measurements ? JSON.stringify(measurements) : null,
-      images ? JSON.stringify(images) : null,
-      status,
-      id
-    ]);
+    const report = await prisma.report.update({
+      where: { id: parseInt(id) },
+      data: {
+        procedureType: procedure_type,
+        doctorName: doctor_name,
+        findings,
+        impression,
+        recommendations,
+        voiceTranscript: voice_transcript,
+        measurements: measurements || null,
+        images: images || null,
+        status,
+        updatedAt: new Date()
+      }
+    });
     
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Report not found' });
-    }
-    
-    res.json(result.rows[0]);
+    res.json(report);
   } catch (error) {
     console.error('Error updating report:', error);
     res.status(500).json({ error: 'Failed to update report' });
@@ -201,27 +211,36 @@ router.put('/:id', async (req, res) => {
 });
 
 // Generate PDF for report
-router.get('/:id/pdf', async (req, res) => {
+router.get('/:id/pdf', async (req: Request, res: Response) => {
   const { id } = req.params;
   
   try {
-    const result = await pool.query(`
-      SELECT 
-        r.*,
-        p.first_name,
-        p.last_name,
-        p.date_of_birth,
-        p.phone
-      FROM reports r
-      JOIN patients p ON r.patient_id = p.id
-      WHERE r.id = $1
-    `, [id]);
+    const reportData = await prisma.report.findUnique({
+      where: { id: parseInt(id) },
+      include: {
+        patient: {
+          select: {
+            firstName: true,
+            lastName: true,
+            dateOfBirth: true,
+            phone: true
+          }
+        }
+      }
+    });
     
-    if (result.rows.length === 0) {
+    if (!reportData) {
       return res.status(404).json({ error: 'Report not found' });
     }
     
-    const report = result.rows[0];
+    // Flatten for PDF generation
+    const report: any = {
+      ...reportData,
+      first_name: reportData.patient?.firstName,
+      last_name: reportData.patient?.lastName,
+      date_of_birth: reportData.patient?.dateOfBirth,
+      phone: reportData.patient?.phone
+    };
     
     // Create PDF
     const doc = new PDFDocument({ margin: 50 });
@@ -293,15 +312,13 @@ router.get('/:id/pdf', async (req, res) => {
 });
 
 // Delete report
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
   
   try {
-    const result = await pool.query('DELETE FROM reports WHERE id = $1 RETURNING *', [id]);
-    
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Report not found' });
-    }
+    await prisma.report.delete({
+      where: { id: parseInt(id) }
+    });
     
     res.json({ message: 'Report deleted successfully' });
   } catch (error) {
