@@ -24,7 +24,8 @@
   "exclude": [
     "node_modules",
     "dist",
-    "prisma/migrations"
+    "prisma/migrations",
+    "mcp-server"
   ],
   "ts-node": {
     "require": ["tsconfig-paths/register"]
